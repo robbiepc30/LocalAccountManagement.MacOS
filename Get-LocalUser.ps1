@@ -1,4 +1,19 @@
 function Get-LocalUser {
+    $userPlist= ([xml](dscl -plist .   readall /Users RecordName RealName UniqueID NFSHomeDirectory)).plist.array.dict
+
+    foreach ($up in $userPlist) {
+        $userHashTable = @{}
+        $up.key | ForEach-Object -Begin {$i = 0} -Process { $userHashTable.Add($_.Split(':')[1], $up.array[$i].string); $i++}
+
+        [PSCustomObject] @{ Name = if ($userHashTable.RecordName.count -gt 1) { $userHashTable.RecordName[0]} else { $userHashTable.RecordName }
+                            DisplayName = $userHashTable.RealName
+                            UID = $userHashTable.UniqueID
+                            HomeDirectory = $userHashTable.NFSHomeDirectory }
+    }
+
+}
+
+function original {
     $userList = dscl . list /Users | grep -v '^_'
     foreach ($u in $userList) {
         $detailedUserInfo = dscl . -read /Users/$u 
@@ -8,21 +23,6 @@ function Get-LocalUser {
                                                HomeDirectory = $detailedUserInfo | grep 'NFSHomeDirectory' | awk '{print $2}'
                                               }
     }
-}
-
-function test {
-    $userPlist= ([xml](dscl -plist .   readall /Users RecordName RealName UniqueID NFSHomeDirectory)).plist.array.dict
-
-    foreach ($up in $userPlist) {
-        $userHashTable = @{}
-        $up.key | ForEach-Object -Begin {$i = 0} -Process { $userHashTable.Add($_.Split(':')[1], $up.array[$i].string); $i++}
-        #$userHashTable
-        [PSCustomObject] @{ Name = $userHashTable.RecordName
-                            DisplayName = $userHashTable.RealName
-                            UID = $userHashTable.UniqueID
-                            HomeDirectory = $userHashTable.NFSHomeDirectory }
-    }
-
 }
 
 function test2 {
