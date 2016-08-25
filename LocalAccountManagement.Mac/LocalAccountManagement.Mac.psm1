@@ -1,40 +1,74 @@
 function Get-LocalUser {
-    $userPlist= ([xml](dscl -plist .   readall /Users RecordName RealName UniqueID NFSHomeDirectory)).plist.array.dict
+    [CmdletBinding()]
+    Param(
+        [String]$Name = "*"
+    )
+    Process 
+    {
+        $userPlist= ([xml](dscl -plist .   readall /Users RecordName RealName UniqueID NFSHomeDirectory)).plist.array.dict
 
-    foreach ($up in $userPlist) {
-        $userHashTable = @{}
-        $up.key | ForEach-Object -Begin { $i = 0 } -Process { $userHashTable.Add($_.Split(':')[1], $up.array[$i].string); $i++ }
+        foreach ($up in $userPlist) 
+        {
+            $userHashTable = @{}
+            $up.key | ForEach-Object -Begin { $i = 0 } -Process { $userHashTable.Add($_.Split(':')[1], $up.array[$i].string); $i++ }
 
-        [PSCustomObject] @{ Name = if ($userHashTable.RecordName.count -gt 1) { $userHashTable.RecordName[0]} else { $userHashTable.RecordName }
-                            DisplayName = $userHashTable.RealName
-                            UID = $userHashTable.UniqueID
-                            HomeDirectory = $userHashTable.NFSHomeDirectory }
+            $user =  [PSCustomObject] @{ Name = if ($userHashTable.RecordName.count -gt 1) { $userHashTable.RecordName[0]} else { $userHashTable.RecordName }
+                                        DisplayName = $userHashTable.RealName
+                                        UID = $userHashTable.UniqueID
+                                        HomeDirectory = $userHashTable.NFSHomeDirectory }
+            # If user matches search criteria then return user object
+            # It would be more efficient if I could figure out a way to do a wildcard search using dscl 
+            #  rather then importing all users, creating objects, and then checking if the name matcehs
+            if ($user.Name -like $Name) { 
+                $user
+            }
+        } 
     }
-
 }
 
-function New-LocalUser ($Name, $DisplayName, $Password, $Hint, [Switch]$Admin) {
-    [int]$maxUID = dscl . list /Users UniqueID | awk '$2>m{m=$2}END{print m}'
-    $nextUID = $maxUID + 1
+function New-LocalUser {
+    [CmdletBinding(SupportsShouldProcess=$true,
+                   confirmImpact='Medium')]
+    Param(
+        [Parameter(Mandatory=$True,
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [String[]]$Name,
+        [String]$DisplayName,
+        [Parameter(Mandatory=$True)]
+        [String]$Password,
+        [String]$Hint,
+        [Switch]$Admin
+    )
+    Process 
+    {
+        If ($psCmdlet.shouldProcess((hostname), "New-LocalUser: Account(s): $Name"))
+        {
+            foreach($N in $Name)
+            {
+                [int]$maxUID = dscl . list /Users UniqueID | awk '$2>m{m=$2}END{print m}'
+                $nextUID = $maxUID + 1
 
-    dscl . create /Users/$Name
-    dscl . create /Users/$Name RealName $DisplayName
-    dscl . create /Users/$Name hint $Hint
-    dscl . passwd /Users/$Name $Password
-    dscl . create /Users/$Name UniqueID $nextUID
+                dscl . create /Users/$N
+                dscl . create /Users/$N RealName $DisplayName
+                dscl . create /Users/$N hint $Hint
+                dscl . passwd /Users/$N $Password
+                dscl . create /Users/$N UniqueID $nextUID
 
-    if ($Admin) {
-        dscl . create /Users/$Name PrimaryGroupID 80 # Admin Group
+                if ($Admin) {
+                    dscl . create /Users/$N PrimaryGroupID 80 # Admin Group
+                }
+                else {
+                    dscl . create /Users/$N PrimaryGroupID 20 # Standard User Staff Group
+                }
+
+                dscl . create /Users/$N UserShell /bin/bash
+                dscl . create /Users/$N NFSHomeDirectory /Users/$N
+                Copy-Item -Path "/System/Library/User Template/English.lproj" -Destination /Users/$N
+                chown -R "$($N):staff" /Users/$N
+            }
+        }
     }
-    else {
-        dscl . create /Users/$Name PrimaryGroupID 20 # Standard User Staff Group
-    }
-
-    dscl . create /Users/$Name UserShell /bin/bash
-    dscl . create /Users/$Name NFSHomeDirectory /Users/$Name
-    Copy-Item -Path "/System/Library/User Template/English.lproj" -Destination /Users/$Name
-    #cp -R "/System/Library/User Template/English.lproj" /Users/$Name  
-    chown -R "$($Name):staff" /Users/$Name
 
     # Picture ..?
     # dscl . create /Users/administrator picture "/Path/To/Picture.png"
@@ -42,16 +76,54 @@ function New-LocalUser ($Name, $DisplayName, $Password, $Hint, [Switch]$Admin) {
     # Ref: http://apple.stackexchange.com/questions/82472/what-steps-are-needed-t create-a-new-user-from-the-command-line
 }
 
-function Remove-LocalUser ($Name) {
-
-    # Extra precaution against $Name being null
-    # If $Name var was null it would read dscl . delete /Users/ and would DELETE ALL USERS!!!
-    if ($Name) {
-        dscl . delete /Users/$Name
+function Remove-LocalUser {
+    [CmdletBinding(SupportsShouldProcess=$true,
+                   confirmImpact='High')]
+    Param(
+        [Parameter(Mandatory=$True,
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [String[]]$Name,
+        [Switch]$Force
+    )
+    Begin
+    {
+        if ($Force) { $ConfirmPreference = 'None' }
     }
-    
-}
+    Process 
+    {
+        If ($psCmdlet.shouldProcess((hostname), "Remove-LocalUser: Account(s): $Name"))
+        {
+            foreach($N in $Name)
+            {
+                dscl . delete /Users/$N
+            }
+        }
+    }
+}   
 
-function Remove-LocalUserProfile ($Name) {
-    Remove-Item -Recurse -Force -Path /Users/$Name
+function Remove-LocalUserProfile {
+    [CmdletBinding(SupportsShouldProcess=$true,
+                   confirmImpact='High')]
+    Param(
+        [Parameter(Mandatory=$True,
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true)]
+        [String[]]$Name,
+        [Switch]$Force
+    )
+    Begin
+    {
+        if ($Force) { $ConfirmPreference = 'None' }
+    }
+    Process 
+    {
+        If ($psCmdlet.shouldProcess((hostname), "Remove-LocalUserProfile: Account(s): $Name"))
+        {
+            foreach($N in $Name)
+            {
+                Remove-Item -Recurse -Force -Path /Users/$N
+            }
+        }
+    }
 }
