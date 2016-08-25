@@ -1,10 +1,11 @@
 function Get-LocalUser {
     [CmdletBinding()]
     Param(
-        [String]$Name = "*"
+        [String]$Name = '*'
     )
     Process 
     {
+        Write-Verbose "Retrieving local user accounts"
         $userPlist= ([xml](dscl -plist .   readall /Users RecordName RealName UniqueID NFSHomeDirectory)).plist.array.dict
 
         foreach ($up in $userPlist) 
@@ -12,10 +13,10 @@ function Get-LocalUser {
             $userHashTable = @{}
             $up.key | ForEach-Object -Begin { $i = 0 } -Process { $userHashTable.Add($_.Split(':')[1], $up.array[$i].string); $i++ }
 
-            $user =  [PSCustomObject] @{ Name = if ($userHashTable.RecordName.count -gt 1) { $userHashTable.RecordName[0]} else { $userHashTable.RecordName }
-                                        DisplayName = $userHashTable.RealName
-                                        UID = $userHashTable.UniqueID
-                                        HomeDirectory = $userHashTable.NFSHomeDirectory }
+            $user =  [PSCustomObject] @{ Name          = if ($userHashTable.RecordName.count -gt 1) { $userHashTable.RecordName[0]} else { $userHashTable.RecordName }
+                                         DisplayName   = $userHashTable.RealName
+                                         UID           = $userHashTable.UniqueID
+                                         HomeDirectory = $userHashTable.NFSHomeDirectory }
             # If user matches search criteria then return user object
             # It would be more efficient if I could figure out a way to do a wildcard search using dscl 
             #  rather then importing all users, creating objects, and then checking if the name matcehs
@@ -46,6 +47,7 @@ function New-LocalUser {
         {
             foreach($N in $Name)
             {
+                Write-Verbose "Creating user `"$N`""
                 [int]$maxUID = dscl . list /Users UniqueID | awk '$2>m{m=$2}END{print m}'
                 $nextUID = $maxUID + 1
 
@@ -96,6 +98,7 @@ function Remove-LocalUser {
         {
             foreach($N in $Name)
             {
+                Write-Verbose "Removing user `"$N`""
                 dscl . delete /Users/$N
             }
         }
@@ -122,6 +125,7 @@ function Remove-LocalUserProfile {
         {
             foreach($N in $Name)
             {
+                Write-Verbose "Removing user `"$N`" home folder from /Users/$N"
                 Remove-Item -Recurse -Force -Path /Users/$N
             }
         }
