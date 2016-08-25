@@ -1,0 +1,1 @@
+Copy-Item -Recurse -Force LocalAccountManagement.Mac /usr/local/share/powershell/Modules -Verbose
