@@ -39,6 +39,7 @@ function New-LocalUser {
         [Parameter(Mandatory=$True)]
         [String]$Password,
         [String]$Hint,
+        [String]$PicturePath,
         [Switch]$Admin
     )
     Process 
@@ -56,14 +57,13 @@ function New-LocalUser {
                 dscl . create /Users/$N hint $Hint
                 dscl . passwd /Users/$N $Password
                 dscl . create /Users/$N UniqueID $nextUID
-
                 if ($Admin) {
                     dscl . create /Users/$N PrimaryGroupID 80 # Admin Group
                 }
                 else {
                     dscl . create /Users/$N PrimaryGroupID 20 # Standard User Staff Group
                 }
-
+                dscl . create /Users/$N picture $PicturePath
                 dscl . create /Users/$N UserShell /bin/bash
                 dscl . create /Users/$N NFSHomeDirectory /Users/$N
                 Copy-Item -Path "/System/Library/User Template/English.lproj" -Destination /Users/$N
@@ -71,10 +71,6 @@ function New-LocalUser {
             }
         }
     }
-
-    # Picture ..?
-    # dscl . create /Users/administrator picture "/Path/To/Picture.png"
-
     # Ref: http://apple.stackexchange.com/questions/82472/what-steps-are-needed-t create-a-new-user-from-the-command-line
 }
 
